@@ -1,0 +1,59 @@
+name: Import reviewed source and verify
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/import-source.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    outputs:
+      revision: ${{ steps.publish.outputs.revision }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Import the approved SHA-256-pinned source snapshot
+        shell: python
+        run: |
+          import hashlib, io, pathlib, urllib.request, zipfile
+          if pathlib.Path('Cargo.toml').exists():
+              raise SystemExit('Source already exists: refusing to overwrite a developed repository. Use normal commits.')
+          url = 'https://backend.composio.dev/api/v3/sl/p6Hfw4RqJG'
+          expected = 'f1defe626727e02ddc6a91aa92c2f21456984c60cc59385e412096e7ca1c1d5c'
+          with urllib.request.urlopen(url, timeout=60) as response:
+              data = response.read(2 * 1024 * 1024 + 1)
+          if len(data) > 2 * 1024 * 1024 or hashlib.sha256(data).hexdigest() != expected:
+              raise SystemExit('Source checksum/size mismatch; nothing imported')
+          allowed = {'Cargo.toml','Cargo.lock','LICENSE','.gitignore','README.md','VALIDATION.md','ROADMAP.md','.cargo/config.toml','src/setup.rs','src/media.rs','src/main.rs','src/ai.rs','ui/index.html','scripts/smoke.py'}
+          with zipfile.ZipFile(io.BytesIO(data)) as archive:
+              if set(archive.namelist()) != allowed or sum(i.file_size for i in archive.infolist()) > 2 * 1024 * 1024:
+                  raise SystemExit('Unexpected source paths/size')
+              for item in archive.infolist():
+                  destination = pathlib.Path(item.filename)
+                  destination.parent.mkdir(parents=True, exist_ok=True)
+                  destination.write_bytes(archive.read(item))
+          pathlib.Path('SOURCE-PROVENANCE.txt').write_text('Reconstructed source snapshot SHA-256: ' + expected + '\nNo old 0.2.1 build/test certification is transferred.\n')
+      - name: Publish source files without rewriting history
+        id: publish
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src ui scripts .cargo Cargo.toml LICENSE README.md VALIDATION.md ROADMAP.md .gitignore SOURCE-PROVENANCE.txt
+          git add --force Cargo.lock
+          git commit -m 'Import reviewed Rust clipping application, tests and documentation'
+          git push origin HEAD:main
+          echo "revision=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+  verify:
+    needs: import
+    uses: ./.github/workflows/ci.yml
+    with:
+      revision: ${{ needs.import.outputs.revision }}
+    permissions:
+      contents: read

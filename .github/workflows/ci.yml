@@ -1,0 +1,57 @@
+name: Rust and native Windows verification
+on:
+  push:
+    branches: [main]
+    paths: ['src/**','ui/**','scripts/**','Cargo.toml','Cargo.lock','.cargo/**']
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      revision:
+        required: false
+        type: string
+permissions:
+  contents: read
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.revision || github.sha }}
+      - uses: dtolnay/rust-toolchain@stable
+      - run: sudo apt-get update -qq && sudo apt-get install -y ffmpeg
+      - run: cargo fmt -- --check
+      - run: cargo test --locked
+      - run: cargo build --locked
+      - run: python3 scripts/smoke.py --exe target/debug/streamslice-lite
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.revision || github.sha }}
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo test --locked
+      - name: Build standalone Windows executable
+        run: cargo build --locked --release --target x86_64-pc-windows-msvc
+        env:
+          CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUSTFLAGS: -C target-feature=+crt-static
+      - name: Verify native setup and concurrent high-quality exports
+        run: python scripts/smoke.py --exe target/x86_64-pc-windows-msvc/release/streamslice-lite.exe --install-tools
+      - name: Prepare application artifact after successful checks
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path dist | Out-Null
+          Copy-Item target/x86_64-pc-windows-msvc/release/streamslice-lite.exe dist/StreamSlice.exe
+          Copy-Item README.md,LICENSE,VALIDATION.md dist/
+          (Get-FileHash dist/StreamSlice.exe -Algorithm SHA256).Hash | Set-Content dist/SHA256.txt
+          git rev-parse HEAD | Set-Content dist/SOURCE_COMMIT.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: StreamSlice-Windows-x64
+          path: dist/
+          retention-days: 14
+          if-no-files-found: error
