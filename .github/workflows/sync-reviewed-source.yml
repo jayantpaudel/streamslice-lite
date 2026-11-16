@@ -19,7 +19,7 @@ jobs:
         with:
           ref: main
           fetch-depth: 2
-      - name: Verify base revision and reviewed source checksum
+      - name: Verify approved no-crop correction and exact base revision
         shell: python
         env:
           EXPECTED_HEAD: ${{ github.sha }}
@@ -27,32 +27,31 @@ jobs:
           import hashlib,io,os,pathlib,subprocess,urllib.request,zipfile
           head=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
           parent=subprocess.check_output(['git','rev-parse','HEAD^'],text=True).strip()
-          if head!=os.environ['EXPECTED_HEAD'] or parent!='21173b81a7861a33327a1baa4af8e12f56f8b415':
+          if head!=os.environ['EXPECTED_HEAD'] or parent!='b1ebe5bbf2f3ea2dd312d5d34ac61c4b335f06ff':
               raise SystemExit('Repository moved: refusing to overwrite unrelated changes')
-          expected='668feac3217e89167ae27c65061a9632bc1f678196177fc1b6217c6ee3a09426'
-          with urllib.request.urlopen('https://backend.composio.dev/api/v3/sl/dhgabazd-F',timeout=60) as response:
+          expected='dd26bb8d9120b4083c6b9d7dee958a0f4caded79d1c0f8b8b842bdb6150bed04'
+          with urllib.request.urlopen('https://backend.composio.dev/api/v3/sl/1te9IDU2yg',timeout=60) as response:
               data=response.read(2*1024*1024+1)
           if len(data)>2*1024*1024 or hashlib.sha256(data).hexdigest()!=expected:
               raise SystemExit('Source checksum/size mismatch; no files modified')
-          allowed={'.cargo/config.toml','.gitignore','Cargo.lock','Cargo.toml','LICENSE','README.md','ROADMAP.md','VALIDATION.md','scripts/licenses.py','scripts/smoke.py','src/ai.rs','src/main.rs','src/media.rs','src/setup.rs','src/vault.rs','ui/index.html'}
+          allowed={'README.md','scripts/smoke.py','src/main.rs','src/media.rs','ui/index.html'}
           with zipfile.ZipFile(io.BytesIO(data)) as archive:
-              if set(archive.namelist())!=allowed or sum(x.file_size for x in archive.infolist())>2*1024*1024:
-                  raise SystemExit('Unexpected paths or size')
+              if set(archive.namelist())!=allowed or len(archive.namelist())!=len(allowed) or sum(x.file_size for x in archive.infolist())>2*1024*1024:
+                  raise SystemExit('Unexpected source paths or size')
               for item in archive.infolist():
                   path=pathlib.Path(item.filename)
                   path.parent.mkdir(parents=True,exist_ok=True)
                   path.write_bytes(archive.read(item))
           path=pathlib.Path('SOURCE-PROVENANCE.txt')
-          path.write_text(path.read_text()+'Reviewed credential-storage enhancement SHA-256: '+expected+'\n')
-      - name: Commit reviewed application files without rewriting history
+          path.write_text(path.read_text()+'Approved no-crop 9:16/1:1 correction SHA-256: '+expected+'\n')
+      - name: Commit the approved resizing correction without rewriting history
         id: commit
         shell: bash
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add src ui scripts .cargo Cargo.toml LICENSE README.md ROADMAP.md VALIDATION.md .gitignore SOURCE-PROVENANCE.txt
-          git add --force Cargo.lock
-          git commit -m 'Add optional Windows credential storage and restart/privacy regression tests'
+          git add README.md scripts/smoke.py src/main.rs src/media.rs ui/index.html SOURCE-PROVENANCE.txt
+          git commit -m 'Resize entire videos to 9:16 or 1:1 without spatial cropping'
           git push origin HEAD:main
           echo "revision=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
   verify:
