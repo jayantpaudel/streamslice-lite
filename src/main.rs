@@ -69,7 +69,7 @@ impl Default for Settings {
             source: String::new(),
             quality: "best".into(),
             preset: "quality".into(),
-            layout: "fit".into(),
+            layout: "vertical".into(),
             seconds: 30,
             burn: true,
             language: "auto".into(),
@@ -80,6 +80,15 @@ impl Default for Settings {
     }
 }
 impl Settings {
+    // Migrate old framing preferences without discarding language/source settings.
+    fn migrate_legacy(mut self) -> Self {
+        if self.preset == "copy" {
+            self.layout = "original".into();
+        } else if ["fit", "crop", "original"].contains(&self.layout.as_str()) {
+            self.layout = "vertical".into();
+        }
+        self
+    }
     fn validate(&self) -> Result<()> {
         if !["best", "360p", "480p", "720p", "1080p"].contains(&self.quality.as_str()) {
             bail!("Invalid capture quality");
@@ -106,10 +115,17 @@ impl Settings {
     }
 }
 fn validate_export(preset: &str, layout: &str) -> Result<()> {
-    if !["copy", "balanced", "quality"].contains(&preset)
-        || !["original", "fit", "crop"].contains(&layout)
-    {
-        bail!("Invalid export preset/layout");
+    if !["copy", "balanced", "quality"].contains(&preset) {
+        bail!("Invalid export preset");
+    }
+    if preset == "copy" {
+        if layout != "original" {
+            bail!(
+                "Original Copy does not resize. Choose Quality or Balanced for 9:16 or 1:1 output."
+            );
+        }
+    } else if !["vertical", "square"].contains(&layout) {
+        bail!("Choose vertical (9:16) or square (1:1). Spatial cropping is not supported.");
     }
     Ok(())
 }
@@ -462,7 +478,7 @@ async fn selftest(
                 mode: "selftest".into(),
                 seconds: 15,
                 preset: "balanced".into(),
-                layout: "fit".into(),
+                layout: "vertical".into(),
                 burn: true,
                 consent: false,
             },
@@ -619,6 +635,7 @@ async fn run() -> Result<()> {
         .await
         .ok()
         .and_then(|v| serde_json::from_slice(&v).ok())
+        .map(|v: Settings| v.migrate_legacy())
         .filter(|v: &Settings| v.validate().is_ok())
         .unwrap_or_default();
     let usage = fs::read(root.join("usage.json"))
@@ -760,5 +777,54 @@ mod tests {
         let s = id();
         assert_eq!(s.len(), 32);
         assert!(s.bytes().all(|b| b.is_ascii_hexdigit()));
+    }
+}
+
+#[cfg(test)]
+mod framing_settings_tests {
+    use super::*;
+    #[test]
+    fn default_is_full_frame_vertical() {
+        assert_eq!(Settings::default().layout, "vertical");
+    }
+    #[test]
+    fn encoded_shapes_only() {
+        for p in ["quality", "balanced"] {
+            assert!(validate_export(p, "vertical").is_ok());
+            assert!(validate_export(p, "square").is_ok());
+            for l in ["crop", "fit", "original"] {
+                assert!(validate_export(p, l).is_err());
+            }
+        }
+    }
+    #[test]
+    fn copy_never_claims_to_resize() {
+        assert!(validate_export("copy", "original").is_ok());
+        assert!(validate_export("copy", "square").is_err());
+    }
+    #[test]
+    fn old_crop_migrates_without_losing_preferences() {
+        let p = Settings {
+            layout: "crop".into(),
+            source: "channel".into(),
+            language: "hi".into(),
+            ..Default::default()
+        }
+        .migrate_legacy();
+        assert_eq!(p.layout, "vertical");
+        assert_eq!(p.source, "channel");
+        assert_eq!(p.language, "hi");
+        p.validate().unwrap();
+    }
+    #[test]
+    fn legacy_fit_and_original_migrate() {
+        for l in ["fit", "original"] {
+            let p = Settings {
+                layout: l.into(),
+                ..Default::default()
+            }
+            .migrate_legacy();
+            assert_eq!(p.layout, "vertical");
+        }
     }
 }

@@ -667,22 +667,20 @@ async fn probe(a: &App, path: &Path) -> Result<Video> {
     })
 }
 pub(crate) fn size(p: &str, l: &str, w: u32, h: u32) -> (u32, u32) {
-    if l != "original" {
-        return if p == "quality" {
-            (1080, 1920)
-        } else {
-            (720, 1280)
-        };
+    if p == "copy" {
+        return (w, h);
     }
-    let s = ((if p == "quality" { 1920.0 } else { 1280.0 }) / w.max(h).max(2) as f64).min(1.0);
-    (
-        ((w as f64 * s / 2.0).floor() as u32 * 2).max(2),
-        ((h as f64 * s / 2.0).floor() as u32 * 2).max(2),
-    )
+    let edge = if p == "quality" { 1080 } else { 720 };
+    if l == "square" {
+        (edge, edge)
+    } else {
+        (edge, edge * 16 / 9)
+    }
 }
-fn filter(l: &str, w: u32, h: u32, fps: f64) -> String {
-    let base=match l{"crop"=>format!("crop=w='floor(min(iw,ih*9/16)/2)*2':h='floor(min(ih,iw*16/9)/2)*2':x='(iw-ow)/2':y='(ih-oh)/2',scale={w}:{h}:flags=lanczos"),"fit"=>format!("scale={w}:{h}:force_original_aspect_ratio=decrease:force_divisible_by=2:flags=lanczos,pad={w}:{h}:(ow-iw)/2:(oh-ih)/2"),_=>format!("scale={w}:{h}:flags=lanczos")};
-    format!("{base},setsar=1,fps={fps:.6}")
+fn filter(_layout: &str, w: u32, h: u32, fps: f64) -> String {
+    // Fit the entire DISPLAY aspect ratio, including anamorphic sample aspect ratio.
+    // There is deliberately no crop filter and no forced aspect-ratio stretching.
+    format!("scale=w='max(2,trunc(min({w},{h}*dar)/2)*2)':h='max(2,trunc(min({h},{w}/dar)/2)*2)':flags=lanczos,setsar=1,pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:color=black,fps={fps:.6}")
 }
 async fn budget(a: &App) -> Result<()> {
     let limit = a.settings.read().await.daily_limit;
@@ -1062,9 +1060,11 @@ mod tests {
     }
     #[test]
     fn dimensions() {
-        assert_eq!(size("quality", "fit", 1920, 1080), (1080, 1920));
-        assert_eq!(size("balanced", "fit", 1920, 1080), (720, 1280));
-        assert_eq!(size("quality", "original", 640, 360), (640, 360));
+        assert_eq!(size("quality", "vertical", 1920, 1080), (1080, 1920));
+        assert_eq!(size("balanced", "vertical", 1920, 1080), (720, 1280));
+        assert_eq!(size("copy", "original", 640, 360), (640, 360));
+        assert_eq!(size("quality", "square", 1920, 1080), (1080, 1080));
+        assert_eq!(size("balanced", "square", 1920, 1080), (720, 720));
     }
     #[tokio::test]
     async fn evicted_segments() {
@@ -1079,5 +1079,21 @@ mod tests {
         fs::write(p.join("000000002.ts"), b"test").await.unwrap();
         assert_eq!(segments(&p).await.unwrap().len(), 1);
         fs::remove_dir_all(p).await.unwrap();
+    }
+}
+
+#[cfg(test)]
+mod no_crop_filter_tests {
+    use super::*;
+    #[test]
+    fn fitting_never_uses_a_crop_filter() {
+        for l in ["vertical", "square"] {
+            let (w, h) = size("quality", l, 1920, 1080);
+            let f = filter(l, w, h, 59.94);
+            assert!(!f.contains("crop="));
+            assert!(f.contains("pad="));
+            assert!(f.contains("dar"));
+            assert!(f.contains("setsar=1"));
+        }
     }
 }

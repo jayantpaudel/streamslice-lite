@@ -18,10 +18,10 @@ The authoritative source and build history are here on GitHub, not temporary cha
 ## Quality / resource policy
 
 - Default source: **Best/original**. Encoding cannot restore detail absent from the input.
-- Quality: **CRF 17**, x264 medium, Lanczos scaling, up to **1080×1920**, preserving source motion up to 60 FPS.
-- Balanced: CRF 21 / veryfast, up to 720×1280 and 30 source FPS. Slower input is not needlessly duplicated to 30 FPS.
-- Original-shape output does not upscale small sources. Vertical fit adds padding; center crop can remove HUD/webcam content. No face tracking or AI super-resolution is claimed.
-- Copy: no video re-encoding and original source detail; keyframe-approximate cuts/caption sync. Use encoded presets for precise cuts/burned captions.
+- Quality: **CRF 17**, x264 medium, Lanczos scaling, **1080×1920 (9:16) or 1080×1080 (1:1)**, preserving source motion up to 60 FPS.
+- Balanced: CRF 21 / veryfast, 720×1280 (9:16) or 720×720 (1:1) and 30 source FPS. Slower input is not needlessly duplicated to 30 FPS.
+- **Resize, never crop:** encoded output proportionally fits the entire source into the selected 9:16 or 1:1 canvas. Padding fills unused space. There is no center crop or aspect-ratio stretching; anamorphic display aspect ratios are respected. No face tracking or AI super-resolution is claimed.
+- Original Copy (advanced, no resizing): no video re-encoding and original source detail; keyframe-approximate cuts/caption sync. Use encoded presets for precise cuts/burned captions.
 - Encoded output: H.264/yuv420p + AAC/48kHz stereo, one-pass loudness normalization, fast-start MP4. H.264/AAC SDR input is recommended. HDR tone mapping/full arbitrary-codec support is not implemented.
 - One media job runs at a time, at most three snapshots active/queued; source snapshots and the rolling buffer live on disk. The adaptive buffer retains up to ~3 minutes and shortens history at high bitrate, with a 256 MiB safety stop.
 - Decoder/filter/encoder threads are constrained; on Windows helpers run below normal priority. No GPU or local AI model is required. CPU encoding still takes time and memory; no fixed total-RAM or zero-load promise is made. Browser/helper/OS memory is separate from the Rust engine.
@@ -66,3 +66,7 @@ python scripts/smoke.py --exe target/debug/streamslice-lite
 Linux development requires FFmpeg/ffprobe from its package manager. Python is a development-test dependency, **not the app runtime**. CI tests the real Windows executable and portable setup on a native Windows runner, including simultaneous capture and 1080p exports. Its artifact is built with a static MSVC CRT. No real Twitch/Groq calls or user recordings are used in synthetic checks.
 
 Not implemented: social auto-posting, global OS hotkeys, a timeline editor, arbitrary long-video batch imports, a native file picker, face tracking, HDR conversion or guaranteed "best/viral" selection. These are not silently represented as completed features; see `ROADMAP.md`.
+
+## Framing correction
+
+The two encoded output shapes are 9:16 and 1:1. Spatial cropping has been removed from the UI and rejected by the API. Old saved fit/crop/encoded-original preferences migrate to 9:16 without discarding source/language preferences. Original Copy remains an explicitly unchanged-source option; resizing requires Quality or Balanced. Synthetic integration tests mark all four source corners and verify they survive both canvases, including anamorphic pixel-aspect-ratio inputs.

@@ -1,3 +1,4 @@
 Reconstructed source snapshot SHA-256: f1defe626727e02ddc6a91aa92c2f21456984c60cc59385e412096e7ca1c1d5c
 No old 0.2.1 build/test certification is transferred.
 Reviewed credential-storage enhancement SHA-256: 668feac3217e89167ae27c65061a9632bc1f678196177fc1b6217c6ee3a09426
+Approved no-crop 9:16/1:1 correction SHA-256: dd26bb8d9120b4083c6b9d7dee958a0f4caded79d1c0f8b8b842bdb6150bed04
