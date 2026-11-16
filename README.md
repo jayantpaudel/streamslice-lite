@@ -11,7 +11,7 @@ The authoritative source and build history are here on GitHub, not temporary cha
 3. Click **Install / repair helpers** (about 200 MB once, at least 1.5 GiB disk free). SHA-256 is verified before extraction/execution. No admin, PATH change, Rust compiler or separate Python installation is needed.
 4. Click **Test this PC**. It generates video, audio, captions and a playable MP4 locally; nothing is uploaded.
 5. Enter a Twitch channel you own/have permission to capture, confirm rights, and Start. Wait 15–30 seconds for completed footage. Absolute local video paths simulate live input too.
-6. Save manually, or add your own Groq key and explicitly allow candidate-audio upload for AI highlights/captions. The key is held in memory only.
+6. Save manually, or add your own Groq key and explicitly allow candidate-audio upload for AI highlights/captions. The key stays in memory unless you explicitly enable Windows Credential Manager storage.
 
 **This is a reconstruction, not the bit-identical earlier 0.2.1 archive. Previous chat test counts do not validate this source.** Current CI and `VALIDATION.md` are authoritative. No code-signing, physical Windows 10/i3 performance certification, real Twitch connectivity or real Groq-key test is claimed unless recorded explicitly.
 
@@ -35,7 +35,7 @@ The speech API receives at most a 90-second sampled mono FLAC window; ranking re
 
 Default models: `whisper-large-v3` and `llama-3.3-70b-versatile` via Groq's OpenAI-compatible API. Review current provider privacy, model availability, pricing and quota terms at <https://console.groq.com/>. Advanced model overrides: `GROQ_SPEECH_MODEL`, `GROQ_CHAT_MODEL`.
 
-Consent must be granted each run and can be withdrawn. Requests already sent cannot be undone. Keys are never written to settings, echoed in status or inherited by helper subprocesses. This reconstruction uses **memory-only keys** rather than pretending the earlier Credential Manager feature has been restored. Other software running as you can still access your process memory.
+Consent must be granted each run and can be withdrawn. Requests already sent cannot be undone. Keys are never written to settings, echoed in status or inherited by helper subprocesses. Optional Windows Credential Manager storage is scoped to your account and this app-data folder; cloud consent still resets each run. Uncheck Remember for session-only entry; Remove key clears memory and requests deletion of this app’s stored credential. OS failures are reported, not silently replaced with plaintext storage. Other software running as you can still access your process memory.
 
 The local UTC-day AI-window counter persists across restarts; default 12 windows/day. Usually two API requests/window. This is **not a financial spending cap** and cannot prove your account is free. HTTP 429 pauses AI; no automatic provider retries, paid fallbacks or billing changes. Automatic sampling is not continuous visual coverage and can miss events.
 
@@ -65,4 +65,4 @@ python scripts/smoke.py --exe target/debug/streamslice-lite
 
 Linux development requires FFmpeg/ffprobe from its package manager. Python is a development-test dependency, **not the app runtime**. CI tests the real Windows executable and portable setup on a native Windows runner, including simultaneous capture and 1080p exports. Its artifact is built with a static MSVC CRT. No real Twitch/Groq calls or user recordings are used in synthetic checks.
 
-Not implemented: social auto-posting, global OS hotkeys, a timeline editor, arbitrary long-video batch imports, a native file picker, persistent Windows-vault keys, face tracking, HDR conversion or guaranteed "best/viral" selection. These are not silently represented as completed features; see `ROADMAP.md`.
+Not implemented: social auto-posting, global OS hotkeys, a timeline editor, arbitrary long-video batch imports, a native file picker, face tracking, HDR conversion or guaranteed "best/viral" selection. These are not silently represented as completed features; see `ROADMAP.md`.

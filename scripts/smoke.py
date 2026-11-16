@@ -73,6 +73,22 @@ try:
  assert api('jobs/'+v['id']+'/cancel',{})[0]==200
  assert finished(v['id'])['stage']=='cancelled';check('Active render cancellation')
  assert api('stop',{})[0]==200;assert not state()['capture']['active'];check('Clean capture stop and retained exports')
+ if os.name=='nt':
+  fake='test-vault-key-never-send-0000001'
+  code,value=api('key',{'key':fake,'remember':True});assert code==200,value
+  assert state()['key_saved'] and fake not in json.dumps(state())
+  assert api('quit',{})[0]==200;assert proc.wait(timeout=30)==0
+  proc=subprocess.Popen([str(Path(args.exe).resolve()),'--no-browser'],env=env,stdout=log,stderr=subprocess.STDOUT)
+  def restarted():
+   value=json.loads((root/'data'/'run.json').read_text())
+   return value['origin']if value['pid']==proc.pid else None
+  base=wait(restarted)
+  html=wait(lambda:urllib.request.urlopen(base).read().decode());token=re.search(r'name="app-token" content="([a-f0-9]+)"',html).group(1)
+  wait(lambda:not state()['doctor']['checking'])
+  assert state()['ai_ready']and state()['key_saved']and not state()['automatic']
+  assert api('jobs',{'mode':'ai','seconds':30,'preset':'quality','layout':'fit','consent':True})[0]==400
+  assert api('key',{'clear':True})[0]==200;assert not state()['ai_ready']and not state()['key_saved']
+  check('Windows credential persistence, no key echo, fresh consent after restart and removal')
  assert api('quit',{})[0]==200;assert proc.wait(timeout=30)==0;check('Graceful shutdown')
  report={'platform':os.name,'checks':checks,'count':len(checks),'real_twitch_tested':False,'real_groq_tested':False};(root/'report.json').write_text(json.dumps(report,indent=2));print(json.dumps(report),flush=True)
 finally:

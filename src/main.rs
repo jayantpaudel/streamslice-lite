@@ -2,6 +2,7 @@
 mod ai;
 mod media;
 mod setup;
+mod vault;
 
 use anyhow::{bail, Context, Result};
 use axum::{
@@ -180,6 +181,7 @@ struct App {
     cancels: Mutex<HashMap<String, Arc<Notify>>>,
     slots: Arc<Semaphore>,
     tx: mpsc::Sender<Job>,
+    remembered: AtomicBool,
     consent: AtomicBool,
     paused: AtomicBool,
     automatic: AtomicBool,
@@ -400,7 +402,7 @@ async fn state(State(a): State<Arc<App>>) -> Json<serde_json::Value> {
     let setup = a.setup.lock().await.clone();
     let ready = a.key.lock().await.is_some();
     Json(
-        serde_json::json!({"version":VERSION,"settings":settings,"doctor":doctor,"capture":view,"buffer_seconds":buffered,"jobs":jobs,"setup":setup,"ai_ready":ready,"ai_paused":a.paused.load(Ordering::Relaxed),"automatic":a.automatic.load(Ordering::Relaxed),"usage":usage,"windows":cfg!(windows),"exports":a.root.join("exports"),"disk_free":fs2::available_space(&a.root).ok()}),
+        serde_json::json!({"version":VERSION,"settings":settings,"doctor":doctor,"capture":view,"buffer_seconds":buffered,"jobs":jobs,"setup":setup,"ai_ready":ready,"key_saved":a.remembered.load(Ordering::Relaxed),"ai_paused":a.paused.load(Ordering::Relaxed),"automatic":a.automatic.load(Ordering::Relaxed),"usage":usage,"windows":cfg!(windows),"exports":a.root.join("exports"),"disk_free":fs2::available_space(&a.root).ok()}),
     )
 }
 #[derive(Deserialize)]
@@ -422,6 +424,8 @@ struct Key {
     key: String,
     #[serde(default)]
     clear: bool,
+    #[serde(default)]
+    remember: bool,
 }
 async fn start(
     State(a): State<Arc<App>>,
@@ -504,18 +508,27 @@ async fn key(
             a.consent.store(false, Ordering::Relaxed);
             a.automatic.store(false, Ordering::Relaxed);
             *a.key.lock().await = None;
+            a.remembered.store(false, Ordering::Relaxed);
+            vault::clear(&a.root)?;
         } else {
             let k = r.key.trim();
-            if !(12..=512).contains(&k.len()) || !k.bytes().all(|v| v.is_ascii_graphic()) {
+            if !(12..=512).contains(&k.len()) || !k.bytes().all(|b| b.is_ascii_graphic()) {
                 bail!("Invalid key format");
             }
+            if r.remember {
+                vault::save(&a.root, k)?;
+            } else if a.remembered.load(Ordering::Relaxed) {
+                vault::clear(&a.root)?;
+            }
             *a.key.lock().await = Some(k.into());
+            a.remembered.store(r.remember, Ordering::Relaxed);
             a.paused.store(false, Ordering::Relaxed);
         }
         Ok(serde_json::json!({"ok":true}))
     }
     .await)
 }
+
 async fn consent(State(a): State<Arc<App>>, Json(r): Json<Confirm>) -> Json<serde_json::Value> {
     a.consent.store(r.confirm, Ordering::Relaxed);
     if !r.confirm {
@@ -617,6 +630,14 @@ async fn run() -> Result<()> {
     let origin = format!("http://127.0.0.1:{}", listener.local_addr()?.port());
     let (tx, rx) = mpsc::channel(MAX_JOBS);
     let tools = discover(&root);
+    let stored_key = match vault::load(&root) {
+        Ok(k) => k,
+        Err(e) => {
+            eprintln!("{e}");
+            None
+        }
+    };
+    let was_saved = stored_key.is_some();
     let a = Arc::new(App {
         root,
         token: format!("{}{}", id(), id()),
@@ -628,7 +649,7 @@ async fn run() -> Result<()> {
         }),
         settings: RwLock::new(settings),
         usage: Mutex::new(usage),
-        key: Mutex::new(None),
+        key: Mutex::new(stored_key),
         client: reqwest::Client::builder()
             .redirect(reqwest::redirect::Policy::none())
             .timeout(Duration::from_secs(120))
@@ -642,6 +663,7 @@ async fn run() -> Result<()> {
         cancels: Mutex::new(HashMap::new()),
         slots: Arc::new(Semaphore::new(MAX_JOBS)),
         tx,
+        remembered: AtomicBool::new(was_saved),
         consent: AtomicBool::new(false),
         paused: AtomicBool::new(false),
         automatic: AtomicBool::new(false),
