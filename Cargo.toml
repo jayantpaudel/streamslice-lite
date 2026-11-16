@@ -1,0 +1,35 @@
+[package]
+name = "streamslice-lite"
+version = "0.3.0"
+edition = "2021"
+rust-version = "1.88"
+license = "MIT"
+description = "Experimental low-resource Rust livestream clipping engine"
+
+[dependencies]
+anyhow = "1"
+axum = "0.8"
+csv = "1"
+fs2 = "0.4"
+getrandom = "0.3"
+reqwest = { version = "0.12", default-features = false, features = ["json", "multipart", "rustls-tls"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "process", "signal", "sync", "fs", "net", "io-util", "time"] }
+tower-http = { version = "0.6", features = ["fs"] }
+zip = { version = "6", default-features = false, features = ["deflate"] }
+
+[profile.dev]
+debug = 0
+incremental = false
+[profile.test]
+debug = 0
+incremental = false
+[profile.release]
+lto = false
+codegen-units = 8
+strip = true
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_UI_WindowsAndMessaging", "Win32_Foundation"] }
