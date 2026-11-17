@@ -1,3 +1,5 @@
+> **WORK IN PROGRESS:** This branch saves the unfinished keyless transcript module. The app is not wired to it yet. See [KEYLESS-WIP.md](KEYLESS-WIP.md). Main and v0.3.0 remain the working baseline.
+
 # StreamSlice Lite
 
 A Rust desktop engine for quality-first clipping on modest Windows PCs. Independent original software, **not Mani Clips or a feature-for-feature clone**.
